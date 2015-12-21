@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Reality Filter</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+      body {
+        margin: 0px;
+        overflow: hidden;
+      }
+      audio, video {
+        -moz-transition: all 1s ease;
+        -ms-transition: all 1s ease;
+        
+        -o-transition: all 1s ease;
+        -webkit-transition: all 1s ease;
+        transition: all 1s ease;
+        vertical-align: top;
+      }
+      #buttonDiv {
+        z-index: 12;
+      }
+      #webglviewer {
+        bottom: 0;
+        left: 0;
+        position: absolute;
+        right: 0;
+        top: 10;
+        /*display: none;*/
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="buttonDiv">
+      <button id="start-broadcasting" class="setup">Start Streaming</button>
+      <table id="rooms-list" style="width: 100%;"></table>
+    </div>
+    <div id="webglviewer">
+      <!-- <canvas id="tempCanvas"></canvas> -->
+    </div>
+    <script src="https://cdn.webrtc-experiment.com/websocket/PeerConnection.js"> </script>
+    <script src="https://cdn.webrtc-experiment.com/view/websocket.js"> </script>
+    <script src="./js/three.min.js"></script>
+    <script src="./js/StereoEffect.js"></script>
+    <script src="./js/close-pixelate-canvas.js"></script>
+    <script>
+        var channel = location.href.replace(/\/|:|#|%|\.|\[|\]/g, '');
+        
+        var pub = 'pub-f986077a-73bd-4c28-8e50-2e44076a84e0';
+        var sub = 'sub-b8f4c07a-352e-11e2-bb9d-c7df1d04ae4a';
+
+        var f_btnJoin = 0;
+        
+        WebSocket  = PUBNUB.ws;
+
+        var websocket = new WebSocket('wss://pubsub.pubnub.com/' + pub + '/' + sub + '/' + channel);
+
+        websocket.onerror = function() {
+            //location.reload();
+        };
+
+        websocket.onclose = function() {
+            //location.reload();
+        };
+
+        websocket.push = websocket.send;
+        websocket.send = function(data) {
+            websocket.push(JSON.stringify(data));
+        };
+        
+        var peer = new PeerConnection(websocket);
+        peer.onUserFound = function(userid) {
+            if (document.getElementById(userid)) return;
+            var tr = document.createElement('tr');
+
+            var td1 = document.createElement('td');
+            var td2 = document.createElement('td');
+
+            td1.innerHTML = userid + ' has camera. Are you interested in video chat?';
+
+            var button = document.createElement('button');
+            button.innerHTML = 'Join';
+            button.id = userid;
+            button.style.float = 'right';
+            button.onclick = function() {
+                button = this;
+                peer.sendParticipationRequest(button.id);
+                document.querySelector('#webglviewer').style.top = 0;
+                button.disabled = true;
+                f_btnJoin = 1;
+            };
+            td2.appendChild(button);
+
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            roomsList.appendChild(tr);
+        };
+
+        peer.onStreamAdded = function(e) {
+            if (e.type == 'local') document.querySelector('#webglviewer').disabled = false;
+            var video = e.mediaElement;
+
+            video.setAttribute('width', 1000);
+            video.setAttribute('controls', true);
+
+            videosContainer.insertBefore(video, videosContainer.firstChild);
+            video.play();
+            rotateVideo(video);
+            scaleVideos();
+            if (f_btnJoin == 1){              
+              init();
+            }
+        };
+
+        peer.onStreamEnded = function(e) {
+            if (e.type == 'local') document.querySelector('#start-broadcasting').disabled = false;
+            var video = e.mediaElement;
+            if (video) {
+                video.style.opacity = 0;
+                rotateVideo(video);
+                setTimeout(function() {
+                    video.parentNode.removeChild(video);
+                    scaleVideos();
+                }, 1000);
+            }
+        };
+        // buttonDiv click
+        document.querySelector('#start-broadcasting').onclick = function() {
+            document.querySelector('#webglviewer').style.top = 0;
+            this.style.visibility = "hidden";
+            //init();
+            getUserMedia(function(stream) {
+                peer.addStream(stream);
+                peer.startBroadcasting();
+            });
+        };
+        var videosContainer = document.getElementById('videos-container') || document.body;
+        var roomsList = document.getElementById('rooms-list');
+
+        function rotateVideo(video) {
+            video.style[navigator.mozGetUserMedia ? 'transform' : '-webkit-transform'] = 'rotate(0deg)';
+            setTimeout(function() {
+                video.style[navigator.mozGetUserMedia ? 'transform' : '-webkit-transform'] = 'rotate(360deg)';
+            }, 1000);
+        }
+
+        function scaleVideos() {
+            var videos = document.querySelectorAll('video'),
+                length = videos.length,
+                video;
+
+            var minus = 130;
+            var windowHeight = 700;
+            var windowWidth = 600;
+            var windowAspectRatio = windowWidth / windowHeight;
+            var videoAspectRatio = 4 / 3;
+            var blockAspectRatio;
+            var tempVideoWidth = 0;
+            var maxVideoWidth = 0;
+
+            for (var i = length; i > 0; i--) {
+                blockAspectRatio = i * videoAspectRatio / Math.ceil(length / i);
+                if (blockAspectRatio <= windowAspectRatio) {
+                    tempVideoWidth = videoAspectRatio * windowHeight / Math.ceil(length / i);
+                } else {
+                    tempVideoWidth = windowWidth / i;
+                }
+                if (tempVideoWidth > maxVideoWidth)
+                    maxVideoWidth = tempVideoWidth;
+            }
+            for (var i = 0; i < length; i++) {
+                video = videos[i];
+                if (video)
+                    video.width = maxVideoWidth - minus;
+            }
+        }
+
+        window.onresize = scaleVideos;
+
+        // you need to capture getUserMedia yourself!
+        function getUserMedia(callback) {
+            var hints = {
+                audio: true,
+                video: {
+                    optional: [],
+                    mandatory: {}
+                }
+            };
+            navigator.getUserMedia(hints, function(stream) {
+                var video = document.createElement('video');
+                video.src = URL.createObjectURL(stream);
+                video.controls = true;
+                video.muted = true;
+
+                peer.onStreamAdded({
+                    mediaElement: video,
+                    userid: 'self',
+                    stream: stream
+                });
+
+                callback(stream);
+            });
+        }
+    </script>     
+
+
+    <script>
+      var scene,
+          camera, 
+          renderer,
+          element,
+          container,
+          effect,
+          video,
+          canvas,
+          context,
+          themes = [],//['blackandwhite', 'sepia', 'arcade', 'inverse'],
+          currentTheme = 0,
+          lookingAtGround = false;
+
+
+      function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.001, 700);
+        camera.position.set(0, 15, 0);
+        scene.add(camera);
+
+        renderer = new THREE.WebGLRenderer();
+        element = renderer.domElement;
+        container = document.getElementById('webglviewer');
+        container.appendChild(element);
+
+        effect = new THREE.StereoEffect(renderer);
+
+        element.addEventListener('click', fullscreen, false);
+
+        video = document.querySelector('video');
+        // video.setAttribute('autoplay', true);
+        // video.src = document.querySelector('video').src; //URL.createObjectURL(stream);
+        // video.style.width = '100%';
+        // video.style.height = '100%';
+        // video.play();
+
+        canvas = document.createElement('canvas');
+        canvas.width = video.clientWidth;
+        canvas.height = video.clientHeight;
+        canvas.width = nextPowerOf2(canvas.width);
+        canvas.height = nextPowerOf2(canvas.height);
+
+        function nextPowerOf2(x) { 
+            return Math.pow(2, Math.ceil(Math.log(x) / Math.log(2))); 
+        }
+
+        context = canvas.getContext('2d');
+        texture = new THREE.Texture(canvas);
+        texture.context = context;
+        
+        // If you do not use powersOf2, or you want to adjust things more, you could use these:
+        //texture.minFilter = THREE.LinearMipMapLinearFilter;
+        //texture.magFilter = THREE.NearestFilter;
+
+        var cameraPlane = new THREE.PlaneGeometry(1920, 1280);
+
+        cameraMesh = new THREE.Mesh(cameraPlane, new THREE.MeshBasicMaterial({
+          color: 0xffffff, opacity: 1, map: texture
+        }));
+        cameraMesh.position.z = -600;
+
+        scene.add(cameraMesh);
+
+        function streamError(error) {
+          console.log('Stream error: ', error);
+        }
+
+        animate();
+      }
+
+
+      function animate() {
+        if (context) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            texture.needsUpdate = true;
+          }
+        }
+
+        requestAnimationFrame(animate);
+
+        update();
+        render();
+      }
+
+      function resize() {
+        var width = container.offsetWidth;
+        var height = container.offsetHeight;
+
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(width, height);
+        effect.setSize(width, height);
+      }
+
+      function update(dt) {
+        resize();
+
+        camera.updateProjectionMatrix();
+      }
+
+      function render(dt) {
+        effect.render(scene, camera);
+      }
+
+      function fullscreen() {
+        if (container.requestFullscreen) {
+          container.requestFullscreen();
+        } else if (container.msRequestFullscreen) {
+          container.msRequestFullscreen();
+        } else if (container.mozRequestFullScreen) {
+          container.mozRequestFullScreen();
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        }
+      }
+    </script>
+  </body>
+</html>
