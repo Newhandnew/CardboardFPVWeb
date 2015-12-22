@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Reality Filter</title>
+    <title>FPV 3D</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
@@ -40,11 +40,12 @@
     <div id="webglviewer">
       <!-- <canvas id="tempCanvas"></canvas> -->
     </div>
-    <script src="https://cdn.webrtc-experiment.com/websocket/PeerConnection.js"> </script>
+    <script src="./js/PeerConnection.js"> </script>
     <script src="https://cdn.webrtc-experiment.com/view/websocket.js"> </script>
     <script src="./js/three.min.js"></script>
     <script src="./js/StereoEffect.js"></script>
     <script src="./js/close-pixelate-canvas.js"></script>
+    <script src="./js/Draw3D.js"></script>
     <script>
         var channel = location.href.replace(/\/|:|#|%|\.|\[|\]/g, '');
         
@@ -87,8 +88,8 @@
             button.onclick = function() {
                 button = this;
                 peer.sendParticipationRequest(button.id);
-                document.querySelector('#webglviewer').style.top = 0;
                 button.disabled = true;
+                document.querySelector('#webglviewer').style.top = 0;     // fix canvas to top
                 f_btnJoin = 1;
             };
             td2.appendChild(button);
@@ -109,8 +110,11 @@
             video.play();
             rotateVideo(video);
             scaleVideos();
-            if (f_btnJoin == 1){              
+            // if already on streaming, get vedio and draw canvas
+            if (f_btnJoin == 1){     
+              f_btnJoin = 2;         
               init();
+              animate();
             }
         };
 
@@ -128,9 +132,7 @@
         };
         // buttonDiv click
         document.querySelector('#start-broadcasting').onclick = function() {
-            document.querySelector('#webglviewer').style.top = 0;
             this.style.visibility = "hidden";
-            //init();
             getUserMedia(function(stream) {
                 peer.addStream(stream);
                 peer.startBroadcasting();
@@ -204,126 +206,5 @@
             });
         }
     </script>     
-
-
-    <script>
-      var scene,
-          camera, 
-          renderer,
-          element,
-          container,
-          effect,
-          video,
-          canvas,
-          context,
-          themes = [],//['blackandwhite', 'sepia', 'arcade', 'inverse'],
-          currentTheme = 0,
-          lookingAtGround = false;
-
-
-      function init() {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.001, 700);
-        camera.position.set(0, 15, 0);
-        scene.add(camera);
-
-        renderer = new THREE.WebGLRenderer();
-        element = renderer.domElement;
-        container = document.getElementById('webglviewer');
-        container.appendChild(element);
-
-        effect = new THREE.StereoEffect(renderer);
-
-        element.addEventListener('click', fullscreen, false);
-
-        video = document.querySelector('video');
-        // video.setAttribute('autoplay', true);
-        // video.src = document.querySelector('video').src; //URL.createObjectURL(stream);
-        // video.style.width = '100%';
-        // video.style.height = '100%';
-        // video.play();
-
-        canvas = document.createElement('canvas');
-        canvas.width = video.clientWidth;
-        canvas.height = video.clientHeight;
-        canvas.width = nextPowerOf2(canvas.width);
-        canvas.height = nextPowerOf2(canvas.height);
-
-        function nextPowerOf2(x) { 
-            return Math.pow(2, Math.ceil(Math.log(x) / Math.log(2))); 
-        }
-
-        context = canvas.getContext('2d');
-        texture = new THREE.Texture(canvas);
-        texture.context = context;
-        
-        // If you do not use powersOf2, or you want to adjust things more, you could use these:
-        //texture.minFilter = THREE.LinearMipMapLinearFilter;
-        //texture.magFilter = THREE.NearestFilter;
-
-        var cameraPlane = new THREE.PlaneGeometry(1920, 1280);
-
-        cameraMesh = new THREE.Mesh(cameraPlane, new THREE.MeshBasicMaterial({
-          color: 0xffffff, opacity: 1, map: texture
-        }));
-        cameraMesh.position.z = -600;
-
-        scene.add(cameraMesh);
-
-        function streamError(error) {
-          console.log('Stream error: ', error);
-        }
-
-        animate();
-      }
-
-
-      function animate() {
-        if (context) {
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            texture.needsUpdate = true;
-          }
-        }
-
-        requestAnimationFrame(animate);
-
-        update();
-        render();
-      }
-
-      function resize() {
-        var width = container.offsetWidth;
-        var height = container.offsetHeight;
-
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-
-        renderer.setSize(width, height);
-        effect.setSize(width, height);
-      }
-
-      function update(dt) {
-        resize();
-
-        camera.updateProjectionMatrix();
-      }
-
-      function render(dt) {
-        effect.render(scene, camera);
-      }
-
-      function fullscreen() {
-        if (container.requestFullscreen) {
-          container.requestFullscreen();
-        } else if (container.msRequestFullscreen) {
-          container.msRequestFullscreen();
-        } else if (container.mozRequestFullScreen) {
-          container.mozRequestFullScreen();
-        } else if (container.webkitRequestFullscreen) {
-          container.webkitRequestFullscreen();
-        }
-      }
-    </script>
   </body>
 </html>
